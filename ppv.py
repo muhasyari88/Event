@@ -193,10 +193,19 @@ async def main():
         if cat not in ALLOWED_CATEGORIES:
             continue
         for stream in category.get("streams", []):
-            iframe = stream.get("iframe")
-            name = stream.get("name", "Unnamed Event")
-            if iframe:
-                streams.append({"name": name, "iframe": iframe, "category": cat})
+    name = stream.get("name", "Unnamed Event")
+
+    # FIX: support multiple iframe keys because API changed
+    iframe = (
+        stream.get("iframe")
+        or stream.get("streamUrl")
+        or stream.get("liveUrl")
+        or stream.get("embed")
+        or stream.get("link")
+    )
+
+    if iframe and isinstance(iframe, str) and iframe.startswith("http"):
+        streams.append({"name": name, "iframe": iframe, "category": cat})
 
     # Deduplicate streams by name (case-insensitive) before scraping
     seen_names = set()
