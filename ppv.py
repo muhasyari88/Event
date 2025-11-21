@@ -64,6 +64,7 @@ GROUP_RENAME_MAP = {
     "American Football": "PPVLand - NFL Action"
 }
 
+
 async def check_m3u8_url(url):
     try:
         headers = {
@@ -79,24 +80,23 @@ async def check_m3u8_url(url):
         print(f"❌ Error checking {url}: {e}")
         return False
 
+
 async def get_streams():
     try:
         timeout = aiohttp.ClientTimeout(total=30)
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             print(f"🌐 Fetching streams from {API_URL}")
             async with session.get(API_URL) as resp:
                 print(f"🔍 Response status: {resp.status}")
                 if resp.status != 200:
                     error_text = await resp.text()
-                    print(f"❌ Error response: {error_text[:500]}")
+                    print(f"❌ API Error Response:\n{error_text[:500]}")
                     return None
                 return await resp.json()
     except Exception as e:
         print(f"❌ Error in get_streams: {str(e)}")
         return None
+
 
 async def grab_m3u8_from_iframe(page, iframe_url):
     found_streams = set()
@@ -132,7 +132,7 @@ async def grab_m3u8_from_iframe(page, iframe_url):
     except Exception as e:
         print(f"❌ Mouse click error: {e}")
 
-    print("⏳ Waiting 5s for final stream load...")
+    print("⏳ Waiting 5s...")
     await asyncio.sleep(5)
     page.remove_listener("response", handle_response)
 
@@ -141,8 +141,10 @@ async def grab_m3u8_from_iframe(page, iframe_url):
         if await check_m3u8_url(url):
             valid_urls.add(url)
         else:
-            print(f"❌ Invalid or unreachable URL: {url}")
+            print(f"❌ Rejected URL: {url}")
+
     return valid_urls
+
 
 def build_m3u(streams, url_map):
     lines = ['#EXTM3U url-tvg="https://epgshare01.online/epgshare01/epg_ripper_DUMMY_CHANNELS.xml.gz"']
@@ -151,80 +153,71 @@ def build_m3u(streams, url_map):
     for s in streams:
         name_lower = s["name"].strip().lower()
         if name_lower in seen_names:
-            continue  # skip duplicates by display name
+            continue
         seen_names.add(name_lower)
 
-        unique_key = f"{s['name']}::{s['category']}::{s['iframe']}"
-        urls = url_map.get(unique_key, [])
+        key = f"{s['name']}::{s['category']}::{s['iframe']}"
+        urls = url_map.get(key, [])
 
         if not urls:
-            print(f"⚠️ No working URLs for {s['name']}")
+            print(f"⚠️ No playable URL for: {s['name']}")
             continue
 
-        orig_category = s["category"].strip()
-        final_group = GROUP_RENAME_MAP.get(orig_category, orig_category)
-        logo = CATEGORY_LOGOS.get(orig_category, "")
-        tvg_id = CATEGORY_TVG_IDS.get(orig_category, "Sports.Dummy.us")
-
-        # Use first valid URL only to avoid multiple entries with same name
+        category = s["category"]
+        logo = CATEGORY_LOGOS.get(category, "")
+        tvg_id = CATEGORY_TVG_IDS.get(category, "Sports.Dummy.us")
+        group = GROUP_RENAME_MAP.get(category, category)
         url = next(iter(urls))
 
-        lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{final_group}",{s["name"]}')
+        lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{group}",{s["name"]}')
         lines.extend(CUSTOM_HEADERS)
         lines.append(url)
 
     return "\n".join(lines)
 
+
 async def main():
-    print("🚀 Starting PPV Stream Fetcher")
+    print("🚀 Starting PPV Stream Scraper")
     data = await get_streams()
-    
-    if not data or 'streams' not in data:
-        print("❌ No valid data received from the API")
+
+    if not data or "streams" not in data:
+        print("❌ API returned invalid or empty structure")
         if data:
-            print(f"API Response: {data}")
+            print(data)
         return
-        
-    print(f"✅ Found {len(data['streams'])} categories")
+
     streams = []
 
-    for category in data.get("streams", []):
+    # FIXED BLOCK ↓↓↓
+    for category in data["streams"]:
         cat = category.get("category", "").strip()
         if cat not in ALLOWED_CATEGORIES:
             continue
+
         for stream in category.get("streams", []):
-    name = stream.get("name", "Unnamed Event")
+            name = stream.get("name", "Unnamed Event")
 
-    # FIX: support multiple iframe keys because API changed
-    iframe = (
-        stream.get("iframe")
-        or stream.get("streamUrl")
-        or stream.get("liveUrl")
-        or stream.get("embed")
-        or stream.get("link")
-    )
+            iframe = (
+                stream.get("iframe")
+                or stream.get("streamUrl")
+                or stream.get("liveUrl")
+                or stream.get("embed")
+                or stream.get("link")
+            )
 
-    if iframe and isinstance(iframe, str) and iframe.startswith("http"):
-        streams.append({"name": name, "iframe": iframe, "category": cat})
+            if iframe and isinstance(iframe, str) and iframe.startswith("http"):
+                streams.append({"name": name, "iframe": iframe, "category": cat})
+    # ↑↑↑ FIX STOP HERE
 
-    # Deduplicate streams by name (case-insensitive) before scraping
-    seen_names = set()
-    deduped_streams = []
-    for s in streams:
-        name_key = s["name"].strip().lower()
-        if name_key not in seen_names:
-            seen_names.add(name_key)
-            deduped_streams.append(s)
-    streams = deduped_streams
+    # Deduplicate
+    seen = set()
+    streams = [s for s in streams if (s["name"].lower() not in seen and not seen.add(s["name"].lower()))]
 
     if not streams:
-        print("🚫 No valid streams found in the API response.")
-        if 'streams' in data:
-            print(f"Raw categories found: {[cat.get('category', 'Unknown') for cat in data['streams']]}")
+        print("🚫 No usable streams found in API response.")
         return
-    
-    print(f"🔍 Found {len(streams)} unique streams to process" + 
-          f" from {len({s['category'] for s in streams})} categories")
+
+    print(f"🔍 Found {len(streams)} streams across categories")
 
     async with async_playwright() as p:
         browser = await p.firefox.launch(headless=True)
@@ -233,21 +226,19 @@ async def main():
 
         url_map = {}
         for s in streams:
-            key = f"{s['name']}::{s['category']}::{s['iframe']}"
-            print(f"\n🔍 Scraping: {s['name']} ({s['category']})")
+            print(f"\n🔎 Scraping stream: {s['name']} ({s['category']})")
             urls = await grab_m3u8_from_iframe(page, s["iframe"])
-            if urls:
-                print(f"✅ Got {len(urls)} stream(s) for {s['name']}")
-            url_map[key] = urls
+            url_map[f"{s['name']}::{s['category']}::{s['iframe']}"] = urls
 
         await browser.close()
 
-    print("\n💾 Writing final playlist to PPVLand.m3u8 ...")
+    print("\n💾 Writing PPVLand.m3u8 ...")
     playlist = build_m3u(streams, url_map)
     with open("PPVLand.m3u8", "w", encoding="utf-8") as f:
         f.write(playlist)
 
-    print(f"✅ Done! Playlist saved as PPVLand.m3u8 at {datetime.utcnow().isoformat()} UTC")
+    print(f"✅ Done at {datetime.utcnow()} UTC")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
