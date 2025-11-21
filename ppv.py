@@ -2,10 +2,8 @@ import asyncio
 from playwright.async_api import async_playwright
 import aiohttp
 from datetime import datetime
-from zoneinfo import ZoneInfo
-import platform
 
-API_URL = "https://ppv.to/api/streams"
+API_URL = "https://ppvs.su/api/streams"   # UPDATED DOMAIN
 
 CUSTOM_HEADERS = [
     '#EXTVLCOPT:http-origin=https://ppvs.su',
@@ -66,37 +64,28 @@ GROUP_RENAME_MAP = {
 
 async def check_m3u8_url(url):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://ppvs.su",
-            "Origin": "https://ppvs.su"
-        }
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://ppvs.su"}
         timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as resp:
                 return resp.status == 200
-    except Exception as e:
-        print(f"❌ Error checking {url}: {e}")
+    except:
         return False
 
 async def get_streams():
     try:
         timeout = aiohttp.ClientTimeout(total=30)
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             print(f"🌐 Fetching streams from {API_URL}")
             async with session.get(API_URL) as resp:
-                print(f"🔍 Response status: {resp.status}")
                 if resp.status != 200:
-                    error_text = await resp.text()
-                    print(f"❌ Error response: {error_text[:500]}")
+                    print(f"❌ Error: {resp.status}")
                     return None
                 return await resp.json()
     except Exception as e:
-        print(f"❌ Error in get_streams: {str(e)}")
+        print(f"❌ API Error: {e}")
         return None
+
 
 async def grab_m3u8_from_iframe(page, iframe_url):
     found_streams = set()
@@ -106,139 +95,78 @@ async def grab_m3u8_from_iframe(page, iframe_url):
             found_streams.add(response.url)
 
     page.on("response", handle_response)
-    print(f"🌐 Navigating to iframe: {iframe_url}")
-
     try:
-        await page.goto(iframe_url, timeout=15000)
-    except Exception as e:
-        print(f"❌ Failed to load iframe: {e}")
-        page.remove_listener("response", handle_response)
+        await page.goto(iframe_url, timeout=20000)
+    except:
         return set()
 
-    await asyncio.sleep(2)
-
-    try:
-        box = page.viewport_size or {"width": 1280, "height": 720}
-        cx, cy = box["width"] / 2, box["height"] / 2
-        for i in range(4):
-            if found_streams:
-                break
-            print(f"🖱️ Click #{i + 1}")
-            try:
-                await page.mouse.click(cx, cy)
-            except Exception:
-                pass
-            await asyncio.sleep(0.3)
-    except Exception as e:
-        print(f"❌ Mouse click error: {e}")
-
-    print("⏳ Waiting 5s for final stream load...")
     await asyncio.sleep(5)
     page.remove_listener("response", handle_response)
 
-    valid_urls = set()
-    for url in found_streams:
-        if await check_m3u8_url(url):
-            valid_urls.add(url)
-        else:
-            print(f"❌ Invalid or unreachable URL: {url}")
+    valid_urls = [u for u in found_streams if await check_m3u8_url(u)]
     return valid_urls
 
 def build_m3u(streams, url_map):
-    lines = ['#EXTM3U url-tvg="https://epgshare01.online/epgshare01/epg_ripper_DUMMY_CHANNELS.xml.gz"']
+    lines = ['#EXTM3U']
+
     seen_names = set()
-
     for s in streams:
-        name_lower = s["name"].strip().lower()
-        if name_lower in seen_names:
-            continue  # skip duplicates by display name
-        seen_names.add(name_lower)
+        name_key = s["name"].lower()
+        if name_key in seen_names:
+            continue
+        seen_names.add(name_key)
 
-        unique_key = f"{s['name']}::{s['category']}::{s['iframe']}"
-        urls = url_map.get(unique_key, [])
-
+        key = f"{s['name']}::{s['category']}::{s['iframe']}"
+        urls = url_map.get(key, [])
         if not urls:
-            print(f"⚠️ No working URLs for {s['name']}")
             continue
 
-        orig_category = s["category"].strip()
-        final_group = GROUP_RENAME_MAP.get(orig_category, orig_category)
-        logo = CATEGORY_LOGOS.get(orig_category, "")
-        tvg_id = CATEGORY_TVG_IDS.get(orig_category, "Sports.Dummy.us")
+        category = s["category"]
+        logo = CATEGORY_LOGOS.get(category, "")
+        tvg_id = CATEGORY_TVG_IDS.get(category, "Sports")
+        group = GROUP_RENAME_MAP.get(category, category)
 
-        # Use first valid URL only to avoid multiple entries with same name
-        url = next(iter(urls))
-
-        lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{final_group}",{s["name"]}')
+        lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{group}",{s["name"]}')
         lines.extend(CUSTOM_HEADERS)
-        lines.append(url)
+        lines.append(urls[0])
 
     return "\n".join(lines)
 
 async def main():
-    print("🚀 Starting PPV Stream Fetcher")
     data = await get_streams()
-    
-    if not data or 'streams' not in data:
-        print("❌ No valid data received from the API")
-        if data:
-            print(f"API Response: {data}")
+    if not data or "data" not in data:
+        print("❌ API returned no usable stream data")
         return
-        
-    print(f"✅ Found {len(data['streams'])} categories")
-    streams = []
 
-    for category in data.get("streams", []):
+    streams = []
+    for category in data["data"]:
         cat = category.get("category", "").strip()
         if cat not in ALLOWED_CATEGORIES:
             continue
-        for stream in category.get("streams", []):
-            iframe = stream.get("iframe")
-            name = stream.get("name", "Unnamed Event")
+
+        for stream in category.get("channels", []):
+            iframe = stream.get("embed")
+            name = stream.get("title", "Unnamed Event")
             if iframe:
                 streams.append({"name": name, "iframe": iframe, "category": cat})
 
-    # Deduplicate streams by name (case-insensitive) before scraping
-    seen_names = set()
-    deduped_streams = []
-    for s in streams:
-        name_key = s["name"].strip().lower()
-        if name_key not in seen_names:
-            seen_names.add(name_key)
-            deduped_streams.append(s)
-    streams = deduped_streams
-
-    if not streams:
-        print("🚫 No valid streams found in the API response.")
-        if 'streams' in data:
-            print(f"Raw categories found: {[cat.get('category', 'Unknown') for cat in data['streams']]}")
-        return
-    
-    print(f"🔍 Found {len(streams)} unique streams to process" + 
-          f" from {len({s['category'] for s in streams})} categories")
-
     async with async_playwright() as p:
         browser = await p.firefox.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-
+        page = await browser.new_page()
         url_map = {}
+
         for s in streams:
             key = f"{s['name']}::{s['category']}::{s['iframe']}"
-            print(f"\n🔍 Scraping: {s['name']} ({s['category']})")
             urls = await grab_m3u8_from_iframe(page, s["iframe"])
-            if urls:
-                print(f"✅ Got {len(urls)} stream(s) for {s['name']}")
             url_map[key] = urls
 
         await browser.close()
 
-    print("\n💾 Writing final playlist to PPVLand.m3u8 ...")
     playlist = build_m3u(streams, url_map)
-    with open("PPVLand.m3u8", "w", encoding="utf-8") as f:
+    with open("PPVLand.m3u8", "w") as f:
         f.write(playlist)
 
-    print(f"✅ Done! Playlist saved as PPVLand.m3u8 at {datetime.utcnow().isoformat()} UTC")
+    print("✅ Playlist updated successfully!")
 
 if __name__ == "__main__":
     asyncio.run(main())
