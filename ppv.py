@@ -228,7 +228,7 @@ def build_m3u(streams, url_map):
             continue
 
         orig_category = s.get("category") or "Misc"
-        final_group = GROUP_RENAME_MAP.get(orig_category, f"PPVLand - {orig_category}")
+        final_group = orig_category
         logo = s.get("poster") or CATEGORY_LOGOS.get(orig_category, "http://drewlive24.duckdns.org:9000/Logos/Default.png")
         tvg_id = CATEGORY_TVG_IDS.get(orig_category, "Misc.Dummy.us")
 
@@ -237,14 +237,14 @@ def build_m3u(streams, url_map):
             for team in NFL_TEAMS:
                 if team in name_lower:
                     tvg_id = "NFL.Dummy.us"
-                    final_group = "PPVLand - NFL Action"
+                    final_group = "NFL Action"
                     matched_team = team
                     break
             if not matched_team:
                 for team in COLLEGE_TEAMS:
                     if team in name_lower:
                         tvg_id = "NCAA.Football.Dummy.us"
-                        final_group = "PPVLand - College Football"
+                        final_group = "College Football"
                         matched_team = team
                         break
 
