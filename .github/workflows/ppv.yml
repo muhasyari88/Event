@@ -38,30 +38,35 @@ jobs:
       - name: 🎯 Run scraping script
         run: python ppv.py
 
-      - name: 💾 Commit & Force Push if Playlist Changed
+      - name: 💾 Commit & Force Push if Updated
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Fetch latest commit to avoid stale local state
+          # Sync repo BEFORE generating playlist (VERY IMPORTANT)
           git fetch origin main
           git reset --hard origin/main
 
-          # Detect playlist changes
+          # Run script AFTER repo synced
+          python ppv.py
+
+          # Stage updated playlist
           git add PPVLand.m3u8
 
+          # Stop if nothing changed
           if git diff --cached --quiet; then
-            echo "✅ No changes to commit"
+            echo "⏹ No playlist changes detected"
             exit 0
           fi
 
           git commit -m "🔁 Update playlist $(date -u +'%a %b %d %T UTC %Y')"
 
-          # Random delay to avoid push collisions when schedule overlaps
+          # Random wait to avoid parallel workflow collisions
           sleep $((RANDOM % 10 + 5))
 
-          # Force push to avoid merge conflict
+          # Always push final result
           git push origin main --force
-          echo "🚀 Successfully pushed to main with --force"
+
+          echo "✔ Playlist updated successfully."
