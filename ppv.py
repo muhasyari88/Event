@@ -44,53 +44,6 @@ CATEGORY_TVG_IDS = {
     "Ice Hockey": "NHL.Hockey.Dummy.us"
 }
 
-GROUP_RENAME_MAP = {
-    "24/7 Streams": "PPVLand - Live Channels 24/7",
-    "Wrestling": "PPVLand - Wrestling Events",
-    "Football": "PPVLand - Global Football Streams",
-    "Basketball": "PPVLand - Basketball Hub",
-    "Baseball": "PPVLand - MLB",
-    "American Football": "PPVLand - NFL Action",
-    "Combat Sports": "PPVLand - Combat Sports",
-    "Darts": "PPVLand - Darts",
-    "Motorsports": "PPVLand - Racing Action",
-    "Live Now": "PPVLand - Live Now",
-    "Ice Hockey": "PPVLand - NHL Action"
-}
-
-NFL_TEAMS = {
-    "arizona cardinals", "atlanta falcons", "baltimore ravens", "buffalo bills",
-    "carolina panthers", "chicago bears", "cincinnati bengals", "cleveland browns",
-    "dallas cowboys", "denver broncos", "detroit lions", "green bay packers",
-    "houston texans", "indianapolis colts", "jacksonville jaguars", "kansas city chiefs",
-    "las vegas raiders", "los angeles chargers", "los angeles rams", "miami dolphins",
-    "minnesota vikings", "new england patriots", "new orleans saints", "new york giants",
-    "new york jets", "philadelphia eagles", "pittsburgh steelers", "san francisco 49ers",
-    "seattle seahawks", "tampa bay buccaneers", "tennessee titans", "washington commanders"
-}
-
-COLLEGE_TEAMS = {
-    "alabama crimson tide", "auburn tigers", "arkansas razorbacks", "georgia bulldogs",
-    "florida gators", "lsu tigers", "ole miss rebels", "mississippi state bulldogs",
-    "tennessee volunteers", "texas longhorns", "oklahoma sooners", "oklahoma state cowboys",
-    "baylor bears", "tcu horned frogs", "kansas jayhawks", "kansas state wildcats",
-    "iowa state cyclones", "iowa hawkeyes", "michigan wolverines", "ohio state buckeyes",
-    "penn state nittany lions", "michigan state spartans", "wisconsin badgers",
-    "minnesota golden gophers", "illinois fighting illini", "northwestern wildcats",
-    "indiana hoosiers", "notre dame fighting irish", "usc trojans", "ucla bruins",
-    "oregon ducks", "oregon state beavers", "washington huskies", "washington state cougars",
-    "arizona wildcats", "stanford cardinal", "california golden bears", "colorado buffaloes",
-    "florida state seminoles", "miami hurricanes", "clemson tigers", "north carolina tar heels",
-    "duke blue devils", "nc state wolfpack", "wake forest demon deacons", "syracuse orange",
-    "virginia cavaliers", "virginia tech hokies", "louisville cardinals", "pittsburgh panthers",
-    "maryland terrapins", "rutgers scarlet knights", "nebraska cornhuskers", "purdue boilermakers",
-    "texas a&m aggies", "kentucky wildcats", "missouri tigers", "vanderbilt commodores",
-    "houston cougars", "utah utes", "byu cougars", "boise state broncos", "san diego state aztecs",
-    "cincinnati bearcats", "memphis tigers", "ucf knights", "south florida bulls", "smu mustangs",
-    "tulsa golden hurricane", "tulane green wave", "navy midshipmen", "army black knights",
-    "arizona state sun devils", "texas tech red raiders", "florida atlantic owls"
-}
-
 # --- CORRECTED FUNCTION #1 ---
 async def check_m3u8_url(url, referer):
     """Checks the M3U8 URL using the correct referer for validation."""
@@ -232,21 +185,7 @@ def build_m3u(streams, url_map):
         logo = s.get("poster") or CATEGORY_LOGOS.get(orig_category, "http://drewlive24.duckdns.org:9000/Logos/Default.png")
         tvg_id = CATEGORY_TVG_IDS.get(orig_category, "Misc.Dummy.us")
 
-        if orig_category == "American Football":
-            matched_team = None
-            for team in NFL_TEAMS:
-                if team in name_lower:
-                    tvg_id = "NFL.Dummy.us"
-                    final_group = "NFL Action"
-                    matched_team = team
-                    break
-            if not matched_team:
-                for team in COLLEGE_TEAMS:
-                    if team in name_lower:
-                        tvg_id = "NCAA.Football.Dummy.us"
-                        final_group = "College Football"
-                        matched_team = team
-                        break
+        
 
         url = next(iter(urls))
         lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{final_group}",{s["name"]}')
